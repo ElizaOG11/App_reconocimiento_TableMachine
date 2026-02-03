@@ -32,7 +32,7 @@
   </div>
 
 <script>
-  const URL = "model/";
+  const URL = "Model/";
   let model, webcam;
   let conteo = {};
   let auto = false;
@@ -44,7 +44,7 @@
   async function iniciar() {
     model = await tmImage.load(URL + "model.json", URL + "metadata.json");
 
-    webcam = new tmImage.Webcam(300, 300, true);
+    webcam = new tmImage.Webcam(300, 300, false);
     await webcam.setup();
     await webcam.play();
     window.requestAnimationFrame(loop);
@@ -98,3 +98,4 @@
 </script>
 </body>
 </html>
+
