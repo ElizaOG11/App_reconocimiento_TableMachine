@@ -68,12 +68,12 @@
     document.getElementById("pred").innerText = "Modelo cargado. Muestra un objeto.";
 
     window.requestAnimationFrame(loop);
-  } catch (e) {
-    document.getElementById("pred").innerText =
-      "Error cargando modelo o cámara. Revisa permisos y la carpeta Model/.";
-    console.error(e);
-    }
-  }
+} catch (e) {
+  document.getElementById("pred").innerText =
+    "❌ No se pudo abrir cámara o cargar el modelo. Revisa permisos de cámara y que existan Model/model.json y Model/metadata.json.";
+  console.error(e);
+}
+
 
 
   async function loop() {
@@ -82,7 +82,7 @@
     window.requestAnimationFrame(loop);
   }
 
-  async function predecir() {
+async function predecir() {
   const predicciones = await model.predict(webcam.canvas);
 
   let mejor = predicciones[0];
@@ -90,7 +90,6 @@
     if (p.probability > mejor.probability) mejor = p;
   }
 
-  // AQUÍ se definen clase y conf correctamente
   const clase = mejor.className;
   const conf = mejor.probability;
 
@@ -99,31 +98,14 @@
   document.getElementById("pred").innerText =
     `Reconocimiento de ${nombreMostrar} (${(conf * 100).toFixed(1)}%)`;
 
-  // Auto-conteo
   if (auto && conf >= UMBRAL) {
     const ahora = Date.now();
     if (ahora - ultimaSuma > ESPERA) {
       sumar(clase);
       ultimaSuma = ahora;
-        }
-      }
-    }
-
-
-    const nombreMostrar = NOMBRES[clase] || clase;
-
-  document.getElementById("pred").innerText =
-  `Reconocimiento de ${nombreMostrar} (${(conf*100).toFixed(1)}%)`;
-
-
-    if (auto && mejor.probability >= UMBRAL) {
-      let ahora = Date.now();
-      if (ahora - ultimaSuma > ESPERA) {
-        sumar(mejor.className);
-        ultimaSuma = ahora;
-      }
     }
   }
+}
 
   function sumar(claseOriginal) {
   const clase = NOMBRES[claseOriginal] || claseOriginal;
@@ -155,6 +137,7 @@
 </script>
 </body>
 </html>
+
 
 
 
