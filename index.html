@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Reconocimiento de útiles escolares</title>
+  <title>Reconocimiento y conteo de útiles escolares</title>
 
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
@@ -15,8 +15,8 @@
 </head>
 
 <body>
-  <h2>Reconocimiento de útiles escolares</h2>
-  <p>Muestra <b>un objeto a la vez</b> a la cámara. Se contará solo si la confianza es alta.</p>
+  <h2>Reconocimiento y conteo de útiles escolares</h2>
+  <p>Muestra <b>un objeto a la vez</b> a la cámara. Se contará solo si la confianza es alta (>90%).</p>
 
   <div id="webcam"></div>
 
@@ -40,6 +40,21 @@
 
   const UMBRAL = 0.90;      // 90%
   const ESPERA = 1500;     // milisegundos
+
+    // Normalizar nombres de clases
+  const NOMBRES = {
+    "Marcador": "marcador",
+    "marcador": "marcador",
+    "Lápiz": "lápiz",
+    "Lapiz": "lápiz",
+    "lápiz": "lápiz",
+    "lapiz": "lápiz",
+    "Lapicero": "lapicero",
+    "lapicero": "lapicero"
+  };
+
+  const CLASES = ["marcador", "lápiz", "lapicero"];
+
 
   async function iniciar() {
     model = await tmImage.load(URL + "model.json", URL + "metadata.json");
@@ -66,8 +81,11 @@
       if (p.probability > mejor.probability) mejor = p;
     }
 
-    document.getElementById("pred").innerText =
-      `${mejor.className} (${(mejor.probability*100).toFixed(1)}%)`;
+    const nombreMostrar = NOMBRES[clase] || clase;
+
+  document.getElementById("pred").innerText =
+  `Reconocimiento de ${nombreMostrar} (${(conf*100).toFixed(1)}%)`;
+
 
     if (auto && mejor.probability >= UMBRAL) {
       let ahora = Date.now();
@@ -78,11 +96,21 @@
     }
   }
 
-  function sumar(clase) {
-    conteo[clase] = (conteo[clase] || 0) + 1;
-    document.getElementById("conteo").innerText =
-      JSON.stringify(conteo, null, 2);
+  function sumar(claseOriginal) {
+  const clase = NOMBRES[claseOriginal] || claseOriginal;
+
+  conteo[clase] = (conteo[clase] || 0) + 1;
+
+  // Mostrar siempre las 3 categorías
+  const salida = {};
+  for (const c of CLASES) {
+    salida[c] = conteo[c] || 0;
   }
+
+  document.getElementById("conteo").innerText =
+    JSON.stringify(salida, null, 2);
+  }
+
 
   function activarAuto() {
     auto = !auto;
@@ -98,5 +126,6 @@
 </script>
 </body>
 </html>
+
 
 
