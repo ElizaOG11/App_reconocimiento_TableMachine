@@ -37,9 +37,15 @@
   let conteo = {};
   let auto = false;
   let ultimaSuma = 0;
+  let ultimaClase = null;
+  let framesIguales = 0;
+  let ultimaSumaPorClase = {};  // {clase: timestamp}
 
-  const UMBRAL = 0.90;
-  const ESPERA = 1500;
+
+  const UMBRAL = 0.95;          // sube el umbral para que no cuente fondo
+  const ESPERA = 2000;          // tiempo mínimo entre conteos del mismo objeto
+  const FRAMES_ESTABLES = 12;   // cuántos frames seguidos debe mantenerse
+
 
   const NOMBRES = {
     "Marcador": "marcador",
@@ -96,14 +102,28 @@
     document.getElementById("pred").innerText =
       `Reconocimiento de ${nombreMostrar} (${(conf * 100).toFixed(1)}%)`;
 
-    if (auto && conf >= UMBRAL) {
-      const ahora = Date.now();
-      if (ahora - ultimaSuma > ESPERA) {
-        sumar(clase);
-        ultimaSuma = ahora;
+    // --- estabilidad de predicción ---
+if (clase === ultimaClase) {
+  framesIguales++;
+} else {
+  ultimaClase = clase;
+  framesIguales = 1;
+}
+
+if (auto && conf >= UMBRAL && framesIguales >= FRAMES_ESTABLES) {
+  const ahora = Date.now();
+  const clave = NOMBRES[clase] || clase;
+  const ultima = ultimaSumaPorClase[clave] || 0;
+
+  // cooldown por clase: evita el "segundero"
+  if (ahora - ultima > ESPERA) {
+    sumar(clase);
+    ultimaSumaPorClase[clave] = ahora;
+    framesIguales = 0; // reinicia para que no cuente otra vez enseguida
+        }
       }
     }
-  }
+  
 
   function sumar(claseOriginal) {
     const clase = NOMBRES[claseOriginal] || claseOriginal;
@@ -130,6 +150,7 @@
 
 </body>
 </html>
+
 
 
 
