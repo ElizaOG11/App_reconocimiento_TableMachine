@@ -1,159 +1,210 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <title>Reconocimiento y conteo de útiles escolares</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Reconocimiento de útiles escolares</title>
 
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
 
   <style>
-    body { font-family: Arial; padding: 20px; }
-    .box { border: 1px solid #ccc; padding: 15px; border-radius: 10px; width: 300px; }
-    button { padding: 10px; margin-top: 10px; }
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    h2 { margin-top: 0; }
+    .row { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+    #webcam canvas { border: 1px solid #ccc; border-radius: 10px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; width: 340px; }
+    button { padding: 10px 12px; margin-right: 8px; margin-top: 8px; cursor: pointer; }
+    .muted { color: #555; }
+    code { background: #f6f6f6; padding: 2px 6px; border-radius: 6px; }
   </style>
 </head>
 
 <body>
   <h2>Reconocimiento y conteo de útiles escolares</h2>
-  <p>Muestra <b>un objeto a la vez</b> a la cámara. Se contará solo si la confianza es alta (>90%).</p>
+  <p class="muted">
+    Muestra <b>un objeto a la vez</b> a la cámara. Solo se contará cuando haya detección confiable.
+  </p>
 
-  <div id="webcam"></div>
+  <p><b>Útiles que reconoce:</b> marcador, lápiz y lapicero.</p>
+  <ul>
+    <li>Marcador</li>
+    <li>Lápiz</li>
+    <li>Lapicero</li>
+  </ul>
 
-  <div class="box">
-    <h3>Predicción</h3>
-    <p id="pred">Cargando modelo...</p>
+  <div class="row">
+    <div id="webcam"></div>
 
-    <button onclick="activarAuto()">Auto-conteo: <span id="estado">OFF</span></button>
-    <button onclick="reiniciar()">Reiniciar conteo</button>
+    <div class="card">
+      <h3>Predicción</h3>
+      <p id="pred">Cargando modelo...</p>
 
-    <h3>Conteo</h3>
-    <pre id="conteo">{}</pre>
+      <button onclick="activarAuto()">Auto-conteo: <span id="estado">OFF</span></button>
+      <button onclick="reiniciar()">Reiniciar conteo</button>
+
+      <h3>Conteo</h3>
+      <pre id="conteo">{
+  "marcador": 0,
+  "lápiz": 0,
+  "lapicero": 0
+}</pre>
+
+      <p class="muted" style="margin-top:10px;">
+        Nota: si tu modelo no fue entrenado con la clase <code>Lapicero</code>, ese conteo quedará en 0.
+      </p>
+    </div>
   </div>
 
-<script>
-  const URL = "Model/";
-  let model, webcam;
-  let conteo = {};
-  let auto = false;
-  let ultimaSuma = 0;
-  let ultimaClase = null;
-  let framesIguales = 0;
-  let ultimaSumaPorClase = {};  // {clase: timestamp}
+  <script>
+    // ✅ Tu carpeta del modelo en GitHub es "Model/" (M mayúscula)
+    const URL = "Model/";
 
+    let model, webcam;
+    let conteo = {};
+    let auto = false;
+    let ultimaSuma = 0;
 
-  const UMBRAL = 0.95;          // sube el umbral para que no cuente fondo
-  const ESPERA = 2000;          // tiempo mínimo entre conteos del mismo objeto
-  const FRAMES_ESTABLES = 12;   // cuántos frames seguidos debe mantenerse
+    // --- Parámetros base ---
+    const ESPERA = 2000; // ms: tiempo mínimo entre conteos
 
+    // --- Anti-falsos positivos / anti-segundero ---
+    // Para decir "sí hay útil"
+    const UMBRAL_ALTO = 0.95;     // sube/baja si es muy estricto
+    // Para "resetear" y permitir contar de nuevo cuando el útil desaparece
+    const UMBRAL_BAJO = 0.70;
+    // Diferencia mínima entre top1 y top2 (si no hay diferencia, está dudando)
+    const MARGEN = 0.20;
+    // Estabilidad requerida (frames seguidos)
+    const FRAMES_ESTABLES = 10;
 
-  const NOMBRES = {
-    "Marcador": "marcador",
-    "marcador": "marcador",
-    "Lápiz": "lápiz",
-    "Lapiz": "lápiz",
-    "lápiz": "lápiz",
-    "lapiz": "lápiz",
-    "Lapicero": "lapicero",
-    "lapicero": "lapicero"
-  };
+    let ultimaClase = null;
+    let framesIguales = 0;
+    let listoParaContar = true;
 
-  const CLASES = ["marcador", "lápiz", "lapicero"];
+    // Normaliza nombres (por si el modelo devuelve mayúsculas / tildes diferentes)
+    const NOMBRES = {
+      "Marcador": "marcador",
+      "marcador": "marcador",
+      "Lápiz": "lápiz",
+      "Lapiz": "lápiz",
+      "lápiz": "lápiz",
+      "lapiz": "lápiz",
+      "Lapicero": "lapicero",
+      "lapicero": "lapicero"
+    };
 
-  async function iniciar() {
-    try {
-      model = await tmImage.load(URL + "model.json", URL + "metadata.json");
+    // Para mostrar siempre estas 3 categorías
+    const CLASES = ["marcador", "lápiz", "lapicero"];
 
-      webcam = new tmImage.Webcam(300, 300, false);
-      await webcam.setup(); // aquí pide permiso de cámara
-      await webcam.play();
+    async function iniciar() {
+      try {
+        model = await tmImage.load(URL + "model.json", URL + "metadata.json");
 
-      document.getElementById("webcam").innerHTML = "";
-      document.getElementById("webcam").appendChild(webcam.canvas);
+        webcam = new tmImage.Webcam(300, 300, false); // false = cámara principal
+        await webcam.setup();  // aquí el navegador pide permiso
+        await webcam.play();
 
-      document.getElementById("pred").innerText = "Modelo cargado. Muestra un objeto.";
+        document.getElementById("webcam").innerHTML = "";
+        document.getElementById("webcam").appendChild(webcam.canvas);
+
+        // Mostrar conteo inicial ordenado
+        renderConteo();
+
+        document.getElementById("pred").innerText = "Sin útil detectado";
+        window.requestAnimationFrame(loop);
+      } catch (e) {
+        console.error(e);
+        document.getElementById("pred").innerText =
+          "❌ No se pudo abrir la cámara o cargar el modelo. Revisa permisos y que existan Model/model.json, Model/metadata.json y Model/weights.bin.";
+      }
+    }
+
+    async function loop() {
+      webcam.update();
+      await predecir();
       window.requestAnimationFrame(loop);
-    } catch (e) {
+    }
+
+    async function predecir() {
+      const predicciones = await model.predict(webcam.canvas);
+
+      // Ordenar por probabilidad (de mayor a menor)
+      const ordenadas = [...predicciones].sort((a, b) => b.probability - a.probability);
+      const top1 = ordenadas[0];
+      const top2 = ordenadas[1] || { probability: 0 };
+
+      const clase = top1.className;
+      const conf = top1.probability;
+      const margen = conf - top2.probability;
+
+      // Estabilidad
+      if (clase === ultimaClase) framesIguales++;
+      else {
+        ultimaClase = clase;
+        framesIguales = 1;
+      }
+
+      const nombreMostrar = NOMBRES[clase] || clase;
+
+      // ¿Hay útil confiable?
+      const hayUtil =
+        conf >= UMBRAL_ALTO &&
+        margen >= MARGEN &&
+        framesIguales >= FRAMES_ESTABLES;
+
+      // Si NO hay útil: no muestres porcentajes y rearma el contador
+      if (!hayUtil) {
+        document.getElementById("pred").innerText = "Sin útil detectado";
+
+        // Rearma cuando baja bastante (o cuando el margen es muy pequeño)
+        if (conf < UMBRAL_BAJO || margen < (MARGEN / 2)) {
+          listoParaContar = true;
+        }
+        return;
+      }
+
+      // Si SÍ hay útil: ahora sí muestra porcentaje
       document.getElementById("pred").innerText =
-        "❌ No se pudo abrir cámara o cargar el modelo. Revisa permisos y que existan Model/model.json y Model/metadata.json.";
-      console.error(e);
-    }
-  }
+        `Reconocimiento de ${nombreMostrar} (${(conf * 100).toFixed(1)}%)`;
 
-  async function loop() {
-    webcam.update();
-    await predecir();
-    window.requestAnimationFrame(loop);
-  }
-
-  async function predecir() {
-    const predicciones = await model.predict(webcam.canvas);
-
-    let mejor = predicciones[0];
-    for (let p of predicciones) {
-      if (p.probability > mejor.probability) mejor = p;
-    }
-
-    const clase = mejor.className;
-    const conf = mejor.probability;
-
-    const nombreMostrar = NOMBRES[clase] || clase;
-
-    document.getElementById("pred").innerText =
-      `Reconocimiento de ${nombreMostrar} (${(conf * 100).toFixed(1)}%)`;
-
-    // --- estabilidad de predicción ---
-if (clase === ultimaClase) {
-  framesIguales++;
-} else {
-  ultimaClase = clase;
-  framesIguales = 1;
-}
-
-if (auto && conf >= UMBRAL && framesIguales >= FRAMES_ESTABLES) {
-  const ahora = Date.now();
-  const clave = NOMBRES[clase] || clase;
-  const ultima = ultimaSumaPorClase[clave] || 0;
-
-  // cooldown por clase: evita el "segundero"
-  if (ahora - ultima > ESPERA) {
-    sumar(clase);
-    ultimaSumaPorClase[clave] = ahora;
-    framesIguales = 0; // reinicia para que no cuente otra vez enseguida
+      // Conteo: SOLO una vez por aparición (anti-segundero)
+      if (auto && listoParaContar) {
+        const ahora = Date.now();
+        if (ahora - ultimaSuma > ESPERA) {
+          sumar(clase);
+          ultimaSuma = ahora;
+          listoParaContar = false;
         }
       }
     }
-  
 
-  function sumar(claseOriginal) {
-    const clase = NOMBRES[claseOriginal] || claseOriginal;
-    conteo[clase] = (conteo[clase] || 0) + 1;
+    function sumar(claseOriginal) {
+      const clase = NOMBRES[claseOriginal] || claseOriginal;
+      conteo[clase] = (conteo[clase] || 0) + 1;
+      renderConteo();
+    }
 
-    const salida = {};
-    for (const c of CLASES) salida[c] = conteo[c] || 0;
+    function renderConteo() {
+      const salida = {};
+      for (const c of CLASES) salida[c] = conteo[c] || 0;
+      document.getElementById("conteo").innerText = JSON.stringify(salida, null, 2);
+    }
 
-    document.getElementById("conteo").innerText = JSON.stringify(salida, null, 2);
-  }
+    function activarAuto() {
+      auto = !auto;
+      document.getElementById("estado").innerText = auto ? "ON" : "OFF";
+    }
 
-  function activarAuto() {
-    auto = !auto;
-    document.getElementById("estado").innerText = auto ? "ON" : "OFF";
-  }
+    function reiniciar() {
+      conteo = {};
+      renderConteo();
+      listoParaContar = true;
+      framesIguales = 0;
+      ultimaClase = null;
+    }
 
-  function reiniciar() {
-    conteo = {};
-    document.getElementById("conteo").innerText = "{}";
-  }
-
-  iniciar();
-</script>
-
+    iniciar();
+  </script>
 </body>
 </html>
-
-
-
-
-
-
-
