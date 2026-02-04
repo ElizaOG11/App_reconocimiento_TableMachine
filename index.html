@@ -70,13 +70,13 @@
 
     // --- Anti-falsos positivos / anti-segundero ---
     // Para decir "sí hay útil"
-    const UMBRAL_ALTO = 0.95;     // sube/baja si es muy estricto
+    const UMBRAL_ALTO = 0.98;     // sube/baja si es muy estricto
     // Para "resetear" y permitir contar de nuevo cuando el útil desaparece
     const UMBRAL_BAJO = 0.70;
     // Diferencia mínima entre top1 y top2 (si no hay diferencia, está dudando)
-    const MARGEN = 0.20;
+    const MARGEN = 0.25;
     // Estabilidad requerida (frames seguidos)
-    const FRAMES_ESTABLES = 10;
+    const FRAMES_ESTABLES = 15;
 
     let ultimaClase = null;
     let framesIguales = 0;
@@ -208,3 +208,4 @@
   </script>
 </body>
 </html>
+
