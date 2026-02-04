@@ -57,15 +57,24 @@
 
 
   async function iniciar() {
+  try {
     model = await tmImage.load(URL + "model.json", URL + "metadata.json");
 
     webcam = new tmImage.Webcam(300, 300, false);
     await webcam.setup();
     await webcam.play();
-    window.requestAnimationFrame(loop);
 
     document.getElementById("webcam").appendChild(webcam.canvas);
+    document.getElementById("pred").innerText = "Modelo cargado. Muestra un objeto.";
+
+    window.requestAnimationFrame(loop);
+  } catch (e) {
+    document.getElementById("pred").innerText =
+      "Error cargando modelo o cámara. Revisa permisos y la carpeta Model/.";
+    console.error(e);
+    }
   }
+
 
   async function loop() {
     webcam.update();
@@ -74,12 +83,32 @@
   }
 
   async function predecir() {
-    const predicciones = await model.predict(webcam.canvas);
+  const predicciones = await model.predict(webcam.canvas);
 
-    let mejor = predicciones[0];
-    for (let p of predicciones) {
-      if (p.probability > mejor.probability) mejor = p;
+  let mejor = predicciones[0];
+  for (let p of predicciones) {
+    if (p.probability > mejor.probability) mejor = p;
+  }
+
+  // AQUÍ se definen clase y conf correctamente
+  const clase = mejor.className;
+  const conf = mejor.probability;
+
+  const nombreMostrar = NOMBRES[clase] || clase;
+
+  document.getElementById("pred").innerText =
+    `Reconocimiento de ${nombreMostrar} (${(conf * 100).toFixed(1)}%)`;
+
+  // Auto-conteo
+  if (auto && conf >= UMBRAL) {
+    const ahora = Date.now();
+    if (ahora - ultimaSuma > ESPERA) {
+      sumar(clase);
+      ultimaSuma = ahora;
+        }
+      }
     }
+
 
     const nombreMostrar = NOMBRES[clase] || clase;
 
@@ -126,6 +155,7 @@
 </script>
 </body>
 </html>
+
 
 
 
